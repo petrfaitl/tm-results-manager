@@ -206,7 +206,7 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 meets.db
-meet_results_20251108.csv
+meet_results*
 tm files/
 .DS_Store
 
