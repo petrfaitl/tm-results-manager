@@ -78,7 +78,7 @@ def parse_meets(html):
     soup = BeautifulSoup(html, "html.parser")
     regions = {}
 
-    containers = soup.find_all(["section", "article", "div"])
+    containers = soup.find_all(["section"])
     PREFIX = "TM Results Files"
 
     for container in containers:
@@ -208,7 +208,6 @@ def update_log(conn, regions, downloaded_files=None):
             meet_name = meet["meet_name"]
             file_path = downloaded_files.get(meet_name)
             downloaded = file_path is not None
-
             meet_date = meet.get("meet_date")
             meet_year = meet.get("meet_year")
             location = meet.get("location")
@@ -224,7 +223,7 @@ def update_log(conn, regions, downloaded_files=None):
                 ON CONFLICT(region, meet_name) DO UPDATE SET
                 url=excluded.url,
                 processed_timestamp=excluded.processed_timestamp,
-                downloaded=excluded.downloaded,
+                downloaded=meets.downloaded,
                 file_path=COALESCE(excluded.file_path, meets.file_path),
                 uploaded=meets.uploaded,
                 processed_by_target=meets.processed_by_target,
