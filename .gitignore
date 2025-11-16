@@ -209,5 +209,5 @@ meets.db
 meet_results*
 tm files/
 .DS_Store
-
+results
 meets.db-journal
