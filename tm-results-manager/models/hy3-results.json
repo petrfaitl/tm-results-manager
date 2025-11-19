@@ -1,0 +1,96 @@
+{
+	"meet_info": {
+		"row_identifier": "B1",
+		"identifier_code": { "start": 1, "length": 2 },
+		"name": { "start": 3, "length": 45 },
+		"location": { "start": 48, "length": 45 },
+		"meet_date_start": { "start": 93, "length": 8 },
+		"meet_date_end": { "start": 101, "length": 8 },
+		"date_format": "MMDDYYYY"
+	},
+	"meet_info_extended": {
+		"row_identifier": "B2",
+		"meet_type_code": { "start": 97, "length": 2 },
+		"meet_type": {
+			"04": "College",
+			"01": "Age Group",
+			"03": "High School",
+			"02": "Open"
+		},
+		"meet_type_fallback": "Other",
+		"course_code": { "start": 99, "length": 1 },
+		"course": {
+			"L": "Long Course Meters",
+			"S": "Short Course Meters",
+			"Y": "Short Course Yards"
+		}
+	},
+	"team_info": {
+		"row_identifier": "C1",
+		"identifier_code": { "start": 1, "length": 2 },
+		"region": "",
+		"team_name": { "start": 8, "length": 30 },
+		"overrides": {
+			"meet_type": {
+				"04": {
+					"team_code": { "start": 3, "length": 4 },
+					"region_code": { "start": null, "length": null },
+					"team_type": "College"
+				},
+				"03": {
+					"team_code": { "start": 3, "length": 4 },
+					"region_code": { "start": null, "length": null },
+					"team_type": "High School"
+				},
+				"02": {
+					"team_code": { "start": 3, "length": 5 },
+					"region_code": { "start": 6, "length": 2 },
+					"team_type": "Open"
+				},
+				"01": {
+					"team_code": { "start": 3, "length": 5 },
+					"region_code": { "start": 6, "length": 2 },
+					"team_type": "Club"
+				},
+				"fallback": {
+					"team_code": { "start": 3, "length": 5 },
+					"region_code": { "start": 6, "length": 2 },
+					"team_type": "Other"
+				}
+			}
+		}
+	},
+	"team_name_detection": {
+		"club": "Club",
+		"swim": "Club",
+		"aquatic": "Club",
+		"aquatics": "Club",
+		"university": "College",
+		"school": "High School",
+		"college": "High School",
+		"intermediate": "High School",
+		"high": "High School",
+		"middle": "High School",
+		"junior": "High School",
+		"acg": "High School",
+		"default": "Club"
+	},
+	"team_info_extended": {
+		"row_identifier": "C2",
+		"address_1": { "start": 33, "length": 30 },
+		"address_2": { "start": 63, "length": 30 },
+		"city": { "start": 93, "length": 2 },
+		"postal_code": { "start": 95, "length": 4 }
+	},
+	"swimmer_info": {
+		"row_identifier": "D1",
+		"identifier_code": { "start": 1, "length": 2 },
+		"gender": { "start": 3, "length": 1 },
+		"last_name": { "start": 9, "length": 20 },
+		"first_name": { "start": 29, "length": 20 },
+		"mm_number": { "start": 70, "length": 12 },
+		"birth_date": { "start": 89, "length": 8 },
+		"birth_date_format": "MMDDYYYY",
+		"age": { "start": 98, "length": 2 }
+	}
+}

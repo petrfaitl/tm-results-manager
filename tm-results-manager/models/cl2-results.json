@@ -1,0 +1,83 @@
+{
+	"meet_info": {
+		"identifiers": ["B13", "B18", "B19"],
+		"identifier_code": { "start": 1, "length": 3 },
+		"name": { "start": 12, "length": 30 },
+		"address": { "start": 52, "length": 44 },
+		"city": { "start": 86, "length": 20 },
+		"region": { "start": 106, "length": 2 },
+		"postal_code": { "start": 108, "length": 4 },
+		"country": { "start": 118, "length": 3 },
+		"date_start": { "start": 122, "length": 8 },
+		"date_end": { "start": 130, "length": 8 },
+		"course": { "start": 150, "length": 1 },
+		"date_format": "MMDDYYYY",
+		"meet_type": {
+			"B13": "College",
+			"B18": "Age Group",
+			"B19": "High School"
+		}
+	},
+	"team_info": {
+		"identifiers": ["C13", "C18", "C19"],
+		"identifier_code": { "start": 1, "length": 3 },
+		"team_code": { "start": 14, "length": 3 },
+		"team_name": { "start": 18, "length": 40 },
+		"team_type": {
+			"C13": "College",
+			"C18": "Age Group",
+			"C19": "High School"
+		},
+		"region_code": { "start": null, "length": null },
+		"address": { "start": 86, "length": 44 },
+		"city": { "start": 128, "length": 2 },
+		"postal_code": { "start": 130, "length": 4 },
+		"overrides": {
+			"C18": {
+				"region_code": {
+					"region_code_part1": { "start": 17, "length": 1 },
+					"region_code_part2": { "start": 150, "length": 1 }
+				}
+			}
+		}
+	},
+	"swimmer_info": {
+		"identifiers": ["D08", "D09", "D03"],
+		"identifier_code": { "start": 1, "length": 3 },
+		"full_name": { "start": 12, "length": 28 },
+		"swimmer_id": { "start": 40, "length": 12 },
+		"birth_date": { "start": 56, "length": 8 },
+		"birth_date_format": "MMDDYYYY",
+		"gender": { "start": 66, "length": 1 },
+		"name_delimiter": ", "
+	},
+	"file_header": {
+		"identifiers": ["A03", "A08", "A09"],
+		"identifier_code": { "start": 1, "length": 3 },
+		"meet_type": {
+			"A03": "College",
+			"A08": "Age Group",
+			"A09": "High School"
+		}
+	},
+	"meet_types": {
+		"College": {
+			"meet_info": "B13",
+			"swimmer_info": "D03",
+			"team_info": "C13",
+			"file_header": "A03"
+		},
+		"HighSchool": {
+			"meet_info": "B19",
+			"swimmer_info": "D09",
+			"team_info": "C19",
+			"file_header": "A09"
+		},
+		"AgeGroup": {
+			"meet_info": "B18",
+			"swimmer_info": "D08",
+			"team_info": "C18",
+			"file_header": "A08"
+		}
+	}
+}
