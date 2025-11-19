@@ -126,7 +126,9 @@ def parse_files(all_downloaded, region, meet_name):
             "SELECT id, file_path FROM meets WHERE region=? AND downloaded=1", (region,)
         )
     elif all_downloaded:
-        cur.execute("SELECT id, file_path FROM meets WHERE downloaded=1 AND parsed=0")
+        cur.execute(
+            "SELECT id, file_path FROM meets WHERE downloaded=1 AND parsed is NULL"
+        )
     else:
         print("Nothing to do. Provide --all-downloaded, --region, or --meet.")
         conn.close()
@@ -140,6 +142,14 @@ def parse_files(all_downloaded, region, meet_name):
 
     # Process sequentially
     ingest_queue(conn)
+    warnings = load_log(conn)  # Refresh log after parsing
+    print("\nParsing completed. Warnings/Errors:")
+    if not warnings.get("errors"):
+        print("  None")
+    for w in warnings.get("errors", []):
+        print(
+            f"- [{w.get('type')}] Meet ID {w.get('meet_id')}, File: {w.get('file_path')}: {w.get('message')}"
+        )
     conn.close()
 
 
