@@ -333,27 +333,50 @@ def get_meet_by_id(conn, meet_id: int) -> Optional[dict]:
 #     }
 
 
+# Formatting date for meet_date column
+def _pretty_date_from_ddmmyyyy(ddmmyyyy: Optional[str]) -> Optional[str]:
+    if not ddmmyyyy or len(ddmmyyyy) != 8:
+        return None
+    try:
+        # ddmmyyyy to datetime
+        from datetime import datetime
+
+        d = datetime.strptime(ddmmyyyy, "%d%m%Y")
+        return d.strftime("%d %b %Y")  # e.g., 12 Oct 2025
+    except Exception:
+        return None
+
+
+# Python
 def update_meet_from_hy3(conn, meet_row: dict, meet_data: dict):
     """
-    Only set meet_date_start, meet_date_end, meet_year (if missing), course (if available).
-    Do not touch meet_date.
+    Update meet metadata from HY3 file:
+    - meet_name: overwrite from file
+    - meet_date_start/end: store as pretty "DD Mon YYYY"
+    - meet_year: from meet_date_start (source)
+    - course/location: fill if available (do not blank existing non-null)
+    - meet_date: human-friendly display date from meet_date_start (e.g., "12 Oct 2025")
     """
-
     cur = conn.cursor()
 
-    # cur.execute("SELECT meet_year FROM meets WHERE id=?", (meet_row["id"],))
+    # meet_data carries start/end as DDMMYYYY (per parser)
+    ddmmyyyy_start = meet_data.get("meet_date_start") or None
+    ddmmyyyy_end = meet_data.get("meet_date_end") or None
 
-    # row = cur.fetchone()
-    # current_year = row[0] if row else None
-
-    # meet_year = meet_data.get("meet_year")
+    # Compute pretty formats
+    pretty_meet_date = _pretty_date_from_ddmmyyyy(ddmmyyyy_start)
+    pretty_start = _pretty_date_from_ddmmyyyy(ddmmyyyy_start)
+    pretty_end = _pretty_date_from_ddmmyyyy(ddmmyyyy_end)
+    meet_year = meet_data.get("meet_year")
 
     _retry_write(
         conn,
         """
         UPDATE meets
-        SET meet_date_start = ?,
-            meet_date_end   = ?,
+        SET meet_name       = COALESCE(?, meet_name),
+            meet_date_start = COALESCE(?, meet_date_start),
+            meet_date_end   = COALESCE(?, meet_date_end),
+            meet_date       = COALESCE(?, meet_date),
             course          = COALESCE(?, course),
             location        = COALESCE(?, location),
             meet_year       = ?,
@@ -361,11 +384,13 @@ def update_meet_from_hy3(conn, meet_row: dict, meet_data: dict):
         WHERE id = ?
         """,
         (
-            meet_data.get("meet_date_start") or None,
-            meet_data.get("meet_date_end") or None,
+            (meet_data.get("meet_name") or "").strip() or None,
+            pretty_start,  # now pretty
+            pretty_end,  # now pretty
+            pretty_meet_date,  # display date
             meet_data.get("course"),
             meet_data.get("location_text"),
-            meet_data.get("meet_year"),
+            meet_year,
             meet_row["id"],
         ),
     )
