@@ -33,21 +33,15 @@ def init_db(db_path: str = DB_FILE):
             course TEXT,
             meet_date_start TEXT,
             meet_date_end TEXT,
-            parsed BOOLEAN DEFAULT FALSE,
-            UNIQUE(region, meet_name)
+            parsed BOOLEAN DEFAULT FALSE
         )
         """
     )
-    # Migrations for added columns (ignore if exist)
-    for col_def in [
-        ("meet_date_start", "TEXT"),
-        ("meet_date_end", "TEXT"),
-        ("parsed", "BOOLEAN"),
-    ]:
-        try:
-            cur.execute(f"ALTER TABLE meets ADD COLUMN {col_def[0]} {col_def[1]}")
-        except sqlite3.OperationalError:
-            pass
+    # Unique index across your chosen identity (no meet_id included)
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_meets_url ON meets(url)")
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_meets_file_path ON meets(file_path)"
+    )
 
     cur.execute(
         """
@@ -251,17 +245,17 @@ def update_log(conn, regions, downloaded_files=None):
                 (region, meet_name, url, processed_timestamp, downloaded, file_path, uploaded, processed_by_target,
                  meet_date, meet_year, location, course)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(region, meet_name) DO UPDATE SET
-                  url=excluded.url,
-                  processed_timestamp=excluded.processed_timestamp,
-                  downloaded=excluded.downloaded,
-                  file_path=COALESCE(excluded.file_path, meets.file_path),
-                  uploaded=meets.uploaded,
-                  processed_by_target=meets.processed_by_target,
-                  meet_date=COALESCE(excluded.meet_date, meets.meet_date),
-                  meet_year=COALESCE(excluded.meet_year, meets.meet_year),
-                  location=COALESCE(excluded.location, meets.location),
-                  course=COALESCE(excluded.course, meets.course)
+                ON CONFLICT(url) DO UPDATE SET
+                region=excluded.region,                           -- region might be corrected
+                meet_name=excluded.meet_name,                     -- meet_name might be corrected
+                processed_timestamp=excluded.processed_timestamp,
+                downloaded=excluded.downloaded OR meets.downloaded,
+                uploaded=excluded.uploaded OR meets.uploaded, 
+                file_path=COALESCE(excluded.file_path, meets.file_path),
+                meet_date=COALESCE(excluded.meet_date, meets.meet_date),
+                meet_year=COALESCE(excluded.meet_year, meets.meet_year),
+                location=COALESCE(excluded.location, meets.location),
+                course=COALESCE(excluded.course, meets.course)
                 """,
                 (
                     region,
@@ -313,26 +307,6 @@ def get_meet_by_id(conn, meet_id: int) -> Optional[dict]:
     }
 
 
-# def get_swimmer_by_id(conn, swimmer_id: int) -> Optional[dict]:
-#     cur = conn.cursor()
-#     cur.execute(
-#         """SELECT id,team_id, first_name, last_name, gender, birth_date, mm_number FROM swimmers WHERE id=?""",
-#         (swimmer_id,),
-#     )
-#     row = cur.fetchone()
-#     if not row:
-#         return None
-#     return {
-#         "id": row[0],
-#         "team_id": row[1],
-#         "first_name": row[2],
-#         "last_name": row[3],
-#         "gender": row[4],
-#         "birth_date": row[5],
-#         "mm_number": row[6],
-#     }
-
-
 # Formatting date for meet_date column
 def _pretty_date_from_ddmmyyyy(ddmmyyyy: Optional[str]) -> Optional[str]:
     if not ddmmyyyy or len(ddmmyyyy) != 8:
@@ -348,6 +322,20 @@ def _pretty_date_from_ddmmyyyy(ddmmyyyy: Optional[str]) -> Optional[str]:
 
 
 # Python
+def find_meet_by_canonical(conn, meet_name: str, meet_date_start: str) -> Optional[int]:
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id FROM meets
+        WHERE meet_name=? AND meet_date_start=?
+    """,
+        (meet_name, meet_date_start),
+    )
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
+# Python
 def update_meet_from_hy3(conn, meet_row: dict, meet_data: dict):
     """
     Update meet metadata from HY3 file:
@@ -358,6 +346,29 @@ def update_meet_from_hy3(conn, meet_row: dict, meet_data: dict):
     - meet_date: human-friendly display date from meet_date_start (e.g., "12 Oct 2025")
     """
     cur = conn.cursor()
+    canonical_id = None
+    if meet_data.get("meet_name") and meet_data.get("meet_date_start"):
+        canonical_id = find_meet_by_canonical(
+            conn,
+            meet_data["meet_name"].strip(),
+            _pretty_date_from_ddmmyyyy(meet_data["meet_date_start"]),
+        )
+        if canonical_id and canonical_id != meet_row["id"]:
+            # Log potential duplicate
+            log_error(
+                conn,
+                file_path=(
+                    meet_row.get("file_path") if isinstance(meet_row, dict) else None
+                ),
+                error_type="DuplicateMeet",
+                message=f"Another meet with same name+date exists (id={canonical_id})",
+                context={
+                    "this_id": meet_row["id"],
+                    "canonical_id": canonical_id,
+                    "meet_name": meet_data["meet_name"],
+                    "meet_date_start": meet_data["meet_date_start"],
+                },
+            )
 
     # meet_data carries start/end as DDMMYYYY (per parser)
     ddmmyyyy_start = meet_data.get("meet_date_start") or None
@@ -440,8 +451,6 @@ def insert_teams(conn, meet_id: int, teams: List[dict]) -> Dict[str, int]:
         if row:
             team_pk = row[0]
             code_to_pk[t_code] = team_pk
-
-            # print(f"Inserted/Found team {t_code} ({t_name}) with ID {team_pk}")
 
     conn.commit()
     return code_to_pk

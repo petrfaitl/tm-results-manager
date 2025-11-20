@@ -66,7 +66,7 @@ def _reformat_date(date_iso: Optional[str], to_fmt: str) -> Optional[str]:
     try:
         d = datetime.fromisoformat(date_iso).date()
         if to_fmt == "DDMMYYYY":
-            return d.strftime("%d%m%Y")
+            return d.strftime("%d%m%Y")  # e.g., 12 Oct 2025
         if to_fmt == "MMDDYYYY":
             return d.strftime("%m%d%Y")
         if to_fmt == "YYYYMMDD":
