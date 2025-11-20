@@ -239,6 +239,9 @@ def update_log(conn, regions, downloaded_files=None):
             file_path = downloaded_files.get(meet_name)
             downloaded = file_path is not None
 
+            raw_token = meet.get("meet_date")
+            pretty_token = _pretty_date_token(raw_token) if raw_token else None
+
             cur.execute(
                 """
                 INSERT INTO meets 
@@ -266,7 +269,7 @@ def update_log(conn, regions, downloaded_files=None):
                     file_path,
                     False,
                     False,
-                    meet.get("meet_date"),
+                    pretty_token,
                     meet.get("meet_year"),
                     meet.get("location"),
                     meet.get("course"),
@@ -318,6 +321,17 @@ def _pretty_date_from_ddmmyyyy(ddmmyyyy: Optional[str]) -> Optional[str]:
         d = datetime.strptime(ddmmyyyy, "%d%m%Y")
         return d.strftime("%d %b %Y")  # e.g., 12 Oct 2025
     except Exception:
+        return None
+
+
+def _pretty_date_token(token: str) -> str | None:
+    # Accept formats like 02Nov2024 and return "02 Nov 2024"
+    if not token or len(token) != 9:
+        return None
+    try:
+        d = datetime.strptime(token, "%d%b%Y")
+        return d.strftime("%d %b %Y")
+    except ValueError:
         return None
 
 
@@ -420,13 +434,22 @@ def insert_teams(conn, meet_id: int, teams: List[dict]) -> Dict[str, int]:
     for t in teams:
         t_code = t.get("team_code", "")  # parser now emits "team_code"
         t_name = t.get("team_name", "")
+        t_type = t.get("team_type", "")
 
         # Upsert globally
         _retry_write(
             conn,
             """
-            INSERT OR IGNORE INTO teams (team_code, team_name, team_type, region_code, region, address_1, address_2, city, postal_code)
+            INSERT INTO teams (team_code, team_name, team_type, region_code, region, address_1, address_2, city, postal_code)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(team_code, team_name) DO UPDATE SET
+                team_type=excluded.team_type,
+                region_code=COALESCE(excluded.region_code, teams.region_code),
+                region=COALESCE(excluded.region, teams.region),
+                address_1=COALESCE(excluded.address_1, teams.address_1),
+                address_2=COALESCE(excluded.address_2, teams.address_2),
+                city=COALESCE(excluded.city, teams.city),
+                postal_code=COALESCE(excluded.postal_code, teams.postal_code)
             """,
             (
                 t_code,

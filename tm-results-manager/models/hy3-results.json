@@ -52,6 +52,11 @@
 					"region_code": { "start": 6, "length": 2 },
 					"team_type": "Club"
 				},
+				"06": {
+					"team_code": { "start": 3, "length": 5 },
+					"region_code": { "start": 6, "length": 2 },
+					"team_type": "Masters"
+				},
 				"fallback": {
 					"team_code": { "start": 3, "length": 5 },
 					"region_code": { "start": 6, "length": 2 },
@@ -62,18 +67,24 @@
 	},
 	"team_name_detection": {
 		"club": "Club",
+		"masters": "Masters",
 		"swim": "Club",
 		"aquatic": "Club",
 		"aquatics": "Club",
 		"university": "College",
 		"school": "High School",
 		"college": "High School",
+		"collegiate": "High School",
+		"collegiate": "High School",
+		"chanel": "High School",
 		"intermediate": "High School",
 		"high": "High School",
 		"middle": "High School",
 		"junior": "High School",
+		"grammar": "High School",
+		"catholic": "High School",
 		"acg": "High School",
-		"default": "Club"
+		"default": "Other"
 	},
 	"team_info_extended": {
 		"row_identifier": "C2",
