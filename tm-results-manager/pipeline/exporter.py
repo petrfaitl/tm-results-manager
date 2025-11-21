@@ -26,12 +26,17 @@ def export_to_csv(regions: Dict[str, List[dict]], log_data, csv_file: str):
     for region, meets in regions.items():
         for meet in meets:
             log_entry = log_data.get(region, {}).get(meet["meet_name"], {})
+            meet_date = (
+                _pretty_from_iso(meet["meet_date"])
+                if meet.get("meet_date")
+                else _pretty_from_iso(log_entry.get("meet_date"))
+            )
             rows.append(
                 {
                     "region": region,
                     "meet_name": meet["meet_name"],
                     "link": meet["link"],
-                    "meet_date": meet.get("meet_date", log_entry.get("meet_date")),
+                    "meet_date": meet_date,
                     "meet_year": meet.get("meet_year", log_entry.get("meet_year")),
                     "location": meet.get("location", log_entry.get("location")),
                     "course": meet.get("course", log_entry.get("course")),

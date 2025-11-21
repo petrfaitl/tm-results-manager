@@ -12,6 +12,7 @@ from .storage.db import (
     load_log,
     update_log,
     enqueue_for_parse,
+    _pretty_from_iso,
 )
 from .pipeline.downloader import download_files
 from .pipeline.exporter import export_to_csv
@@ -95,6 +96,9 @@ def cli():
     "--enqueue-parse", is_flag=True, help="Enqueue downloaded files for parsing"
 )
 @click.option(
+    "--parse-now", is_flag=True, help="Run the parse queue immediately after enqueueing"
+)
+@click.option(
     "--process-new", is_flag=True, help="Download and parse meets where downloaded=0"
 )
 def run(
@@ -105,6 +109,7 @@ def run(
     output_dir,
     csv_file,
     enqueue_parse,
+    parse_now,
     process_new,
 ):
     """
@@ -259,7 +264,8 @@ def run(
                 row = cur.fetchone()
                 if row:
                     enqueue_for_parse(conn, row[0], file_path)
-
+    if download and enqueue_parse and parse_now:
+        ingest_queue(conn)
     if export_csv:
         export_to_csv(regions, log_data, csv_file)
 
@@ -268,7 +274,7 @@ def run(
         print(f"\nRegion: {reg}")
         for m in meets:
             print(
-                f"  Meet: {m['meet_name']}, Date: {m.get('meet_date')}, Year: {m.get('meet_year')}, Location: {m.get('location')}, Course: {m.get('course')}"
+                f"  Meet: {m['meet_name']}, Date: {_pretty_from_iso(m["meet_date"])}, Year: {m.get('meet_year')}, Location: {m.get('location')}, Course: {m.get('course')}"
             )
 
     conn.close()

@@ -40,6 +40,9 @@ def init_db(db_path: str = DB_FILE):
     # Unique index across your chosen identity (no meet_id included)
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_meets_url ON meets(url)")
     cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_meets_canonical ON meets(meet_name, meet_date_start)"
+    )
+    cur.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_meets_file_path ON meets(file_path)"
     )
 
@@ -240,7 +243,7 @@ def update_log(conn, regions, downloaded_files=None):
             downloaded = file_path is not None
 
             raw_token = meet.get("meet_date")
-            pretty_token = _pretty_date_token(raw_token) if raw_token else None
+            iso_token = _iso_from_token(raw_token) if raw_token else None
 
             cur.execute(
                 """
@@ -269,7 +272,7 @@ def update_log(conn, regions, downloaded_files=None):
                     file_path,
                     False,
                     False,
-                    pretty_token,
+                    iso_token,
                     meet.get("meet_year"),
                     meet.get("location"),
                     meet.get("course"),
@@ -335,40 +338,77 @@ def _pretty_date_token(token: str) -> str | None:
         return None
 
 
+def _iso_from_token(token: Optional[str]) -> Optional[str]:
+    # token like 02Nov2024 -> 2024-11-02
+    if not token or len(token) != 9:
+        return None
+    try:
+        d = datetime.strptime(token, "%d%b%Y")
+        return d.strftime("%Y-%m-%d")
+    except Exception:
+        return None
+
+
 # Python
-def find_meet_by_canonical(conn, meet_name: str, meet_date_start: str) -> Optional[int]:
+def _pretty_from_iso(iso: Optional[str]) -> Optional[str]:
+    if not iso:
+        return None
+    try:
+        d = datetime.strptime(iso, "%Y-%m-%d")
+        return d.strftime("%d %b %Y")
+    except Exception:
+        return iso  # fallback to raw if unexpected
+
+
+def _iso_from_ddmmyyyy(ddmmyyyy: Optional[str]) -> Optional[str]:
+    if not ddmmyyyy or len(ddmmyyyy) != 8:
+        return None
+    try:
+        d = datetime.strptime(ddmmyyyy, "%d%m%Y")
+        return d.strftime("%Y-%m-%d")
+    except Exception:
+        return None
+
+
+def find_meet_by_canonical(
+    conn, meet_name: str, meet_date_start_iso: str
+) -> Optional[int]:
+    """
+    Return the meets.id that matches a canonical (meet_name + meet_date_start ISO).
+    """
     cur = conn.cursor()
     cur.execute(
-        """
-        SELECT id FROM meets
-        WHERE meet_name=? AND meet_date_start=?
-    """,
-        (meet_name, meet_date_start),
+        "SELECT id FROM meets WHERE meet_name=? AND meet_date_start=?",
+        (meet_name, meet_date_start_iso),
     )
     row = cur.fetchone()
     return row[0] if row else None
 
 
-# Python
 def update_meet_from_hy3(conn, meet_row: dict, meet_data: dict):
     """
     Update meet metadata from HY3 file:
     - meet_name: overwrite from file
-    - meet_date_start/end: store as pretty "DD Mon YYYY"
+
     - meet_year: from meet_date_start (source)
     - course/location: fill if available (do not blank existing non-null)
     - meet_date: human-friendly display date from meet_date_start (e.g., "12 Oct 2025")
     """
     cur = conn.cursor()
+
+    # meet_data carries start/end as DDMMYYYY (per parser)
+    ddmmyyyy_start = meet_data.get("meet_date_start") or None
+    ddmmyyyy_end = meet_data.get("meet_date_end") or None
+
+    iso_start = _iso_from_ddmmyyyy(ddmmyyyy_start)
+    iso_end = _iso_from_ddmmyyyy(ddmmyyyy_end)
+
     canonical_id = None
-    if meet_data.get("meet_name") and meet_data.get("meet_date_start"):
+    if meet_data.get("meet_name") and iso_start:
         canonical_id = find_meet_by_canonical(
-            conn,
-            meet_data["meet_name"].strip(),
-            _pretty_date_from_ddmmyyyy(meet_data["meet_date_start"]),
+            conn, meet_data["meet_name"].strip(), iso_start
         )
         if canonical_id and canonical_id != meet_row["id"]:
-            # Log potential duplicate
             log_error(
                 conn,
                 file_path=(
@@ -380,18 +420,10 @@ def update_meet_from_hy3(conn, meet_row: dict, meet_data: dict):
                     "this_id": meet_row["id"],
                     "canonical_id": canonical_id,
                     "meet_name": meet_data["meet_name"],
-                    "meet_date_start": meet_data["meet_date_start"],
+                    "meet_date_start_iso": iso_start,
                 },
             )
 
-    # meet_data carries start/end as DDMMYYYY (per parser)
-    ddmmyyyy_start = meet_data.get("meet_date_start") or None
-    ddmmyyyy_end = meet_data.get("meet_date_end") or None
-
-    # Compute pretty formats
-    pretty_meet_date = _pretty_date_from_ddmmyyyy(ddmmyyyy_start)
-    pretty_start = _pretty_date_from_ddmmyyyy(ddmmyyyy_start)
-    pretty_end = _pretty_date_from_ddmmyyyy(ddmmyyyy_end)
     meet_year = meet_data.get("meet_year")
 
     _retry_write(
@@ -410,16 +442,15 @@ def update_meet_from_hy3(conn, meet_row: dict, meet_data: dict):
         """,
         (
             (meet_data.get("meet_name") or "").strip() or None,
-            pretty_start,  # now pretty
-            pretty_end,  # now pretty
-            pretty_meet_date,  # display date
+            iso_start,
+            iso_end,
+            iso_start,  # meet_date mirrors start date
             meet_data.get("course"),
             meet_data.get("location_text"),
             meet_year,
             meet_row["id"],
         ),
     )
-
     conn.commit()
 
 

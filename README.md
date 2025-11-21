@@ -23,8 +23,9 @@ Requirements:
 
 Install dependencies:
 
-bash
+```bash
 pip install -r requirements.txt
+```
 
 Recommended layout:
 
@@ -55,8 +56,7 @@ python -m tm_results_manager.cli run --process-new
 
 Parse by region or by a specific meet:
 
-```
-bash
+```bash
 python -m tm_results_manager.cli parse-files --region "Otago"
 python -m tm_results_manager.cli parse-files --meet "PSC October 2025 Club Night"
 ```
@@ -91,6 +91,7 @@ Options:
 -   --all-regions Process all regions
 -   --download Download result files for the selected regions/meets
 -   --enqueue-parse Enqueue newly downloaded files for parsing
+-   --parse-now Parse all enqueued files
 -   --export-csv Export a CSV snapshot of currently known meets
 -   --output-dir &lt;dir&gt; Directory for downloads (default: results)
 -   --csv-file &lt;file&gt; CSV output file (default: meet*results*&lt;YYYYMMDD&gt;.csv)
@@ -172,7 +173,7 @@ python -m tm_results_manager.cli parse-files --manual-bulk --region "Waikato"
 -   Extract:
     -   Meet metadata: meet_name (canonical), meet_date_start/end (saved as “DD Mon YYYY”), meet_year, course
     -   Teams: team_code, team_name, team_type, region_code, derived region (via models/region_codes.json)
-    -   Swimmers: first_name, last_name, gender, birth_date (DDMMYYYY, stored as pretty “DD Mon YYYY” for display), mm_number, and team context
+    -   Swimmers: first_name, last_name, gender, birth_date (DDMMYYYY), mm_number, and team context
 -   Upsert meet (overwrite meet_name and human-readable meet_date from file)
 -   Insert/Upsert teams globally by (team_code, team_name)
 -   Insert/Upsert swimmers globally by identity and link:
@@ -278,14 +279,14 @@ Key modules:
 
 -   Why does meet_name change after parsing?
 
-    -   We standardize meet_name from the HY3 file to avoid website naming inconsistencies. De-duplication uses URL pre-download and canonical name + date after parsing.
+-   We standardize meet_name from the HY3 file to avoid website naming inconsistencies. De-duplication uses URL pre-download and canonical name + date after parsing.
 
 -   Why are meet_date_start/end stored as “DD Mon YYYY”?
 
-    -   For readability in the DB and CSV. meet_year is stored numerically for queries.
+-   For readability in the DB and CSV. meet_year is stored numerically for queries.
 
 -   Can I import a ZIP manually without downloading from the website?
-    -   Yes. Use parse-files --manual or --manual-bulk. Files go through the same parsing pipeline.
+-   Yes. Use parse-files --manual or --manual-bulk. Files go through the same parsing pipeline.
 
 ---
 
@@ -307,7 +308,7 @@ FROM meets
 ORDER BY COALESCE(meet_year, 0) DESC, meet_name;
 ```
 
-**Meets in a specific region and year (pretty dates)**
+**Meets in a specific region and year**
 
 ```sql
 SELECT id, meet_name, meet_date_start AS start_date, meet_date_end AS end_date, meet_year
