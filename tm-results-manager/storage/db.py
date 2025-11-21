@@ -240,24 +240,75 @@ def update_log(conn, regions, downloaded_files=None):
         for meet in meets:
             meet_name = meet["meet_name"]
             file_path = downloaded_files.get(meet_name)
+            # print(f"Updating log for meet: {meet_name}, file_path={file_path}")
             downloaded = file_path is not None
+            url = meet["link"]
 
-            raw_token = meet.get("meet_date")
-            iso_token = _iso_from_token(raw_token) if raw_token else None
+            # If we have a file_path, ensure we don't collide with existing row
+            if downloaded and file_path:
+                found = _find_meet_by_file_path(conn, file_path)
+                if found:
+                    # print(found)
+                    existing_id, existing_url = found
+                    if existing_url != url:
+                        # Consolidate: update existing row (found by file_path) with this meet’s metadata and url
+                        cur.execute(
+                            """
+                            UPDATE meets
+                            SET url = COALESCE(?, url),
+                                region = COALESCE(?, region),
+                                meet_name = COALESCE(?, meet_name),
+                                processed_timestamp = ?,
+                                downloaded = 1,
+                                -- file_path already set and unique
+                                meet_date = COALESCE(?, meet_date),
+                                meet_year = COALESCE(?, meet_year),
+                                location = COALESCE(?, location),
+                                course = COALESCE(?, course)
+                            WHERE id = ?
+                            """,
+                            (
+                                url,
+                                region,
+                                meet_name,
+                                now,
+                                meet.get("meet_date"),
+                                meet.get("meet_year"),
+                                meet.get("location"),
+                                meet.get("course"),
+                                existing_id,
+                            ),
+                        )
+                        # Skip the usual INSERT/UPSERT for this meet
+                        log_error(
+                            conn,
+                            file_path=file_path,
+                            error_type="FilePathCollision",
+                            message="Consolidating rows by file_path",
+                            context={
+                                "existing_id": existing_id,
+                                "existing_url": existing_url,
+                                "incoming_url": url,
+                            },
+                        )
 
+                        continue
+
+            # Normal upsert by URL
             cur.execute(
                 """
                 INSERT INTO meets 
                 (region, meet_name, url, processed_timestamp, downloaded, file_path, uploaded, processed_by_target,
-                 meet_date, meet_year, location, course)
+                meet_date, meet_year, location, course)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(url) DO UPDATE SET
-                region=excluded.region,                           -- region might be corrected
-                meet_name=excluded.meet_name,                     -- meet_name might be corrected
+                region=excluded.region,
+                meet_name=excluded.meet_name,
                 processed_timestamp=excluded.processed_timestamp,
                 downloaded=excluded.downloaded OR meets.downloaded,
-                uploaded=excluded.uploaded OR meets.uploaded, 
                 file_path=COALESCE(excluded.file_path, meets.file_path),
+                uploaded=meets.uploaded,
+                processed_by_target=meets.processed_by_target,
                 meet_date=COALESCE(excluded.meet_date, meets.meet_date),
                 meet_year=COALESCE(excluded.meet_year, meets.meet_year),
                 location=COALESCE(excluded.location, meets.location),
@@ -266,18 +317,19 @@ def update_log(conn, regions, downloaded_files=None):
                 (
                     region,
                     meet_name,
-                    meet["link"],
+                    url,
                     now,
                     downloaded,
                     file_path,
                     False,
                     False,
-                    iso_token,
+                    meet.get("meet_date"),
                     meet.get("meet_year"),
                     meet.get("location"),
                     meet.get("course"),
                 ),
             )
+
     conn.commit()
 
 
@@ -293,6 +345,12 @@ def _retry_write(
                 time.sleep(0.2 * (i + 1))
                 continue
             raise
+
+
+def _find_meet_by_file_path(conn, file_path: str):
+    cur = conn.cursor()
+    cur.execute("SELECT id, url FROM meets WHERE file_path = ?", (file_path,))
+    return cur.fetchone()  # (id, url) or None
 
 
 def get_meet_by_id(conn, meet_id: int) -> Optional[dict]:
@@ -385,73 +443,106 @@ def find_meet_by_canonical(
     return row[0] if row else None
 
 
+# Python
 def update_meet_from_hy3(conn, meet_row: dict, meet_data: dict):
     """
     Update meet metadata from HY3 file:
-    - meet_name: overwrite from file
-
-    - meet_year: from meet_date_start (source)
-    - course/location: fill if available (do not blank existing non-null)
-    - meet_date: human-friendly display date from meet_date_start (e.g., "12 Oct 2025")
+    - Overwrite meet_name from file (canonical)
+    - Store dates in ISO (YYYY-MM-DD): meet_date_start, meet_date_end, meet_date (mirrors start)
+    - Set meet_year from start date (already computed by parser and passed in meet_data)
+    - Fill course/location if provided (do not blank existing non-null values)
+    - Flag parsed=1
+    - If another row already has the same canonical identity (meet_name + meet_date_start ISO),
+      merge this row into the existing one and stop.
     """
     cur = conn.cursor()
 
-    # meet_data carries start/end as DDMMYYYY (per parser)
+    # Parser supplies DDMMYYYY; convert to ISO for storage and canonical matching
     ddmmyyyy_start = meet_data.get("meet_date_start") or None
     ddmmyyyy_end = meet_data.get("meet_date_end") or None
 
     iso_start = _iso_from_ddmmyyyy(ddmmyyyy_start)
     iso_end = _iso_from_ddmmyyyy(ddmmyyyy_end)
 
-    canonical_id = None
+    # Canonical duplicate detection and merge
     if meet_data.get("meet_name") and iso_start:
-        canonical_id = find_meet_by_canonical(
+        other_id = find_meet_by_canonical(
             conn, meet_data["meet_name"].strip(), iso_start
         )
-        if canonical_id and canonical_id != meet_row["id"]:
+        if other_id and other_id != meet_row["id"]:
+            # Merge current row into the existing canonical row and stop
             log_error(
                 conn,
                 file_path=(
                     meet_row.get("file_path") if isinstance(meet_row, dict) else None
                 ),
-                error_type="DuplicateMeet",
-                message=f"Another meet with same name+date exists (id={canonical_id})",
+                error_type="CanonicalMerge",
+                message=f"Merging meet {meet_row['id']} into canonical {other_id}",
                 context={
-                    "this_id": meet_row["id"],
-                    "canonical_id": canonical_id,
+                    "source_id": meet_row["id"],
+                    "target_id": other_id,
                     "meet_name": meet_data["meet_name"],
                     "meet_date_start_iso": iso_start,
                 },
             )
+            merge_meets(conn, source_id=meet_row["id"], target_id=other_id)
+            return
 
     meet_year = meet_data.get("meet_year")
 
-    _retry_write(
-        conn,
-        """
-        UPDATE meets
-        SET meet_name       = COALESCE(?, meet_name),
-            meet_date_start = COALESCE(?, meet_date_start),
-            meet_date_end   = COALESCE(?, meet_date_end),
-            meet_date       = COALESCE(?, meet_date),
-            course          = COALESCE(?, course),
-            location        = COALESCE(?, location),
-            meet_year       = ?,
-            parsed          = 1
-        WHERE id = ?
-        """,
-        (
-            (meet_data.get("meet_name") or "").strip() or None,
-            iso_start,
-            iso_end,
-            iso_start,  # meet_date mirrors start date
-            meet_data.get("course"),
-            meet_data.get("location_text"),
-            meet_year,
-            meet_row["id"],
-        ),
-    )
-    conn.commit()
+    try:
+        _retry_write(
+            conn,
+            """
+            UPDATE meets
+            SET meet_name       = COALESCE(?, meet_name),
+                meet_date_start = COALESCE(?, meet_date_start),
+                meet_date_end   = COALESCE(?, meet_date_end),
+                meet_date       = COALESCE(?, meet_date),   -- mirror start date (ISO)
+                course          = COALESCE(?, course),
+                location        = COALESCE(?, location),
+                meet_year       = ?,
+                parsed          = 1
+            WHERE id = ?
+            """,
+            (
+                (meet_data.get("meet_name") or "").strip() or None,
+                iso_start,
+                iso_end,
+                iso_start,
+                meet_data.get("course"),
+                meet_data.get("location_text"),
+                meet_year,
+                meet_row["id"],
+            ),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError as e:
+        # Likely a conflict on ux_meets_canonical (meet_name, meet_date_start)
+        if meet_data.get("meet_name") and iso_start:
+            other_id = find_meet_by_canonical(
+                conn, meet_data["meet_name"].strip(), iso_start
+            )
+            if other_id and other_id != meet_row["id"]:
+                log_error(
+                    conn,
+                    file_path=(
+                        meet_row.get("file_path")
+                        if isinstance(meet_row, dict)
+                        else None
+                    ),
+                    error_type="CanonicalMerge",
+                    message=f"IntegrityError on canonical update; merging {meet_row['id']} -> {other_id}",
+                    context={
+                        "source_id": meet_row["id"],
+                        "target_id": other_id,
+                        "error": str(e),
+                    },
+                )
+                merge_meets(conn, source_id=meet_row["id"], target_id=other_id)
+                return
+        # If not canonical-related, re-raise
+        raise
 
 
 def insert_teams(conn, meet_id: int, teams: List[dict]) -> Dict[str, int]:
@@ -563,6 +654,97 @@ def insert_swimmers(
 
     conn.commit()
     return swimmer_ids
+
+
+def merge_meets(conn, source_id: int, target_id: int):
+    """
+    Merge 'source' meet row into 'target':
+    - Keep target row, delete source.
+    - Prefer target.file_path; if missing, move source.file_path over.
+    - Consolidate flags.
+    - Repoint link tables and parse_queue to target_id.
+    """
+    cur = conn.cursor()
+
+    # Pull both rows
+    cur.execute(
+        "SELECT id, region, meet_name, url, processed_timestamp, downloaded, file_path, uploaded, processed_by_target, meet_date, meet_year, location, course, meet_date_start, meet_date_end, parsed FROM meets WHERE id=?",
+        (target_id,),
+    )
+    target = cur.fetchone()
+    cur.execute(
+        "SELECT id, region, meet_name, url, processed_timestamp, downloaded, file_path, uploaded, processed_by_target, meet_date, meet_year, location, course, meet_date_start, meet_date_end, parsed FROM meets WHERE id=?",
+        (source_id,),
+    )
+    source = cur.fetchone()
+
+    if not target or not source:
+        return
+
+    # Consolidate file_path/flags/fields into target
+    target_file = target[6]
+    source_file = source[6]
+    new_file = target_file or source_file
+    downloaded = int((target[5] or 0) or (source[5] or 0))
+    uploaded = int((target[7] or 0) or (source[7] or 0))
+    processed_by_target = int((target[8] or 0) or (source[8] or 0))
+    meet_date = target[9] or source[9]
+    meet_year = target[10] or source[10]
+    location = target[11] or source[11]
+    course = target[12] or source[12]
+    meet_date_start = target[13] or source[13]
+    meet_date_end = target[14] or source[14]
+    parsed = int((target[15] or 0) or (source[15] or 0))
+
+    # Update target row
+    _retry_write(
+        conn,
+        """
+        UPDATE meets
+        SET downloaded=?,
+            file_path=?,
+            uploaded=?,
+            processed_by_target=?,
+            meet_date=COALESCE(?, meet_date),
+            meet_year=COALESCE(?, meet_year),
+            location=COALESCE(?, location),
+            course=COALESCE(?, course),
+            meet_date_start=COALESCE(?, meet_date_start),
+            meet_date_end=COALESCE(?, meet_date_end),
+            parsed=?
+        WHERE id=?
+    """,
+        (
+            downloaded,
+            new_file,
+            uploaded,
+            processed_by_target,
+            meet_date,
+            meet_year,
+            location,
+            course,
+            meet_date_start,
+            meet_date_end,
+            parsed,
+            target_id,
+        ),
+    )
+
+    # Repoint links and queue to target
+    for table, col in [
+        ("meet_team", "meet_id"),
+        ("meet_swimmer", "meet_id"),
+        ("meet_team_swimmer", "meet_id"),
+        ("parse_queue", "meet_id"),
+        ("error_log", "meet_id"),
+    ]:
+        _retry_write(
+            conn, f"UPDATE {table} SET {col}=? WHERE {col}=?", (target_id, source_id)
+        )
+
+    # Finally, delete the source row
+    _retry_write(conn, "DELETE FROM meets WHERE id=?", (source_id,))
+    conn.commit()
 
 
 def link_meet_teams(conn, meet_id: int, team_ids: List[int]) -> None:
