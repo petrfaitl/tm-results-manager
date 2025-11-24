@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 from typing import Dict, List
 from ..http import infer_filename_from_url
 from ..utils.dates import extract_date_token, base_name_without_ext_and_code
+from ..storage.db import _iso_from_token
 
 PREFIX = "TM Results Files"
 
@@ -71,12 +72,13 @@ def parse_meets(html: str) -> Dict[str, List[dict]]:
             orig_filename = infer_filename_from_url(link)
             base_no_ext = base_name_without_ext_and_code(orig_filename)
             date_token, year_int = extract_date_token(base_no_ext)
+            formatted_meet_date = _iso_from_token(date_token)
 
             regions[region_name].append(
                 {
                     "meet_name": meet_name,
                     "link": link,
-                    "meet_date": date_token,
+                    "meet_date": formatted_meet_date,
                     "meet_year": year_int,
                     "location": None,
                     "course": None,

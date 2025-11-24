@@ -233,7 +233,6 @@ def run(
     if not html:
         return
 
-    conn = init_db()
     regions = parse_meets(html)
     log_data = load_log(conn)
 
@@ -265,6 +264,8 @@ def run(
                 if row:
                     enqueue_for_parse(conn, row[0], file_path)
     if download and enqueue_parse and parse_now:
+        ingest_queue(conn)
+    if download and parse_now:
         ingest_queue(conn)
     if export_csv:
         export_to_csv(regions, log_data, csv_file)

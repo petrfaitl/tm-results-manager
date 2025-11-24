@@ -235,6 +235,12 @@ def update_log(conn, regions, downloaded_files=None):
         downloaded_files = {}
     cur = conn.cursor()
     now = datetime.now().isoformat()
+    # Python
+
+    def _find_meet_by_file_path(conn, file_path: str):
+        cur = conn.cursor()
+        cur.execute("SELECT id, url FROM meets WHERE file_path = ?", (file_path,))
+        return cur.fetchone()  # (id, url) or None
 
     for region, meets in regions.items():
         for meet in meets:
@@ -255,12 +261,11 @@ def update_log(conn, regions, downloaded_files=None):
                         cur.execute(
                             """
                             UPDATE meets
-                            SET url = COALESCE(?, url),
+                            SET url = ?,
                                 region = COALESCE(?, region),
                                 meet_name = COALESCE(?, meet_name),
                                 processed_timestamp = ?,
                                 downloaded = 1,
-                                -- file_path already set and unique
                                 meet_date = COALESCE(?, meet_date),
                                 meet_year = COALESCE(?, meet_year),
                                 location = COALESCE(?, location),
@@ -347,10 +352,10 @@ def _retry_write(
             raise
 
 
-def _find_meet_by_file_path(conn, file_path: str):
-    cur = conn.cursor()
-    cur.execute("SELECT id, url FROM meets WHERE file_path = ?", (file_path,))
-    return cur.fetchone()  # (id, url) or None
+# def _find_meet_by_file_path(conn, file_path: str):
+#     cur = conn.cursor()
+#     cur.execute("SELECT id, url FROM meets WHERE file_path = ?", (file_path,))
+#     return cur.fetchone()  # (id, url) or None
 
 
 def get_meet_by_id(conn, meet_id: int) -> Optional[dict]:
