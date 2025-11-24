@@ -687,6 +687,10 @@ def merge_meets(conn, source_id: int, target_id: int):
         return
 
     # Consolidate file_path/flags/fields into target
+    target_url = target[3]
+    source_url = source[3]
+    final_url = source_url if (target_url or "").startswith("manual://") else target_url
+
     target_file = target[6]
     source_file = source[6]
     new_file = target_file or source_file
@@ -706,7 +710,8 @@ def merge_meets(conn, source_id: int, target_id: int):
         conn,
         """
         UPDATE meets
-        SET downloaded=?,
+        SET url=COALESCE(?, url),
+            downloaded=?,
             file_path=?,
             uploaded=?,
             processed_by_target=?,
@@ -720,6 +725,7 @@ def merge_meets(conn, source_id: int, target_id: int):
         WHERE id=?
     """,
         (
+            final_url,
             downloaded,
             new_file,
             uploaded,
