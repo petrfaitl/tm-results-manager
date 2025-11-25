@@ -9,6 +9,7 @@ import tempfile
 from datetime import datetime
 
 MODEL_PATH = Path(__file__).resolve().parents[1] / "models" / "hy3-results.json"
+TEAM_NAMES_PATH = Path(__file__).resolve().parents[1] / "models" / "team_names.json"
 REGION_CODES_PATH = Path(__file__).resolve().parents[1] / "models" / "region_codes.json"
 
 
@@ -17,6 +18,7 @@ def _load_json(path: Path) -> dict:
 
 
 MODEL = _load_json(MODEL_PATH)
+TEAM_NAMES = _load_json(TEAM_NAMES_PATH)
 REGION_CODES = _load_json(REGION_CODES_PATH) if REGION_CODES_PATH.exists() else {}
 
 
@@ -129,7 +131,7 @@ def parse_hy3_lines(
     team_info_spec = MODEL["team_info"]
     team_ext_spec = MODEL.get("team_info_extended", {})
     swimmer_spec = MODEL["swimmer_info"]
-    detection_map = MODEL.get("team_name_detection", {})
+    detection_map = TEAM_NAMES.get("team_name_detection", {})
 
     meet_type_code = ""
     meet_type_map = meet_ext_spec.get("meet_type") or {}

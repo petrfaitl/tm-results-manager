@@ -661,13 +661,16 @@ def insert_swimmers(
     return swimmer_ids
 
 
+# Python
 def merge_meets(conn, source_id: int, target_id: int):
     """
     Merge 'source' meet row into 'target':
     - Keep target row, delete source.
     - Prefer target.file_path; if missing, move source.file_path over.
+    - Promote manual:// URL on target to the source URL if present.
     - Consolidate flags.
     - Repoint link tables and parse_queue to target_id.
+    - Avoid UNIQUE(url) conflicts by temporarily moving the source URL out of the unique space before updating target.
     """
     cur = conn.cursor()
 
@@ -686,10 +689,10 @@ def merge_meets(conn, source_id: int, target_id: int):
     if not target or not source:
         return
 
-    # Consolidate file_path/flags/fields into target
-    target_url = target[3]
-    source_url = source[3]
-    final_url = source_url if (target_url or "").startswith("manual://") else target_url
+    target_url = target[3] or ""
+    source_url = source[3] or ""
+    # If target has manual URL, we want to promote to the source URL (community)
+    final_url = source_url if target_url.startswith("manual://") else target_url
 
     target_file = target[6]
     source_file = source[6]
@@ -705,7 +708,15 @@ def merge_meets(conn, source_id: int, target_id: int):
     meet_date_end = target[14] or source[14]
     parsed = int((target[15] or 0) or (source[15] or 0))
 
-    # Update target row
+    # 1) Temporarily move source URL to a unique sentinel so we can set target.url to source_url without violating UNIQUE(url)
+    # Use a sentinel guaranteed unique for this row
+    sentinel_url = f"manual://merged/{source_id}"
+    if source_url and source_url == final_url:
+        _retry_write(
+            conn, "UPDATE meets SET url=? WHERE id=?", (sentinel_url, source_id)
+        )
+
+    # 2) Update target row (including URL promotion)
     _retry_write(
         conn,
         """
@@ -723,7 +734,7 @@ def merge_meets(conn, source_id: int, target_id: int):
             meet_date_end=COALESCE(?, meet_date_end),
             parsed=?
         WHERE id=?
-    """,
+        """,
         (
             final_url,
             downloaded,
@@ -741,7 +752,7 @@ def merge_meets(conn, source_id: int, target_id: int):
         ),
     )
 
-    # Repoint links and queue to target
+    # 3) Repoint links and queue to target
     for table, col in [
         ("meet_team", "meet_id"),
         ("meet_swimmer", "meet_id"),
@@ -753,7 +764,7 @@ def merge_meets(conn, source_id: int, target_id: int):
             conn, f"UPDATE {table} SET {col}=? WHERE {col}=?", (target_id, source_id)
         )
 
-    # Finally, delete the source row
+    # 4) Delete source row
     _retry_write(conn, "DELETE FROM meets WHERE id=?", (source_id,))
     conn.commit()
 

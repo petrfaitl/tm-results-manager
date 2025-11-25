@@ -65,27 +65,6 @@
 			}
 		}
 	},
-	"team_name_detection": {
-		"club": "Club",
-		"masters": "Masters",
-		"swim": "Club",
-		"aquatic": "Club",
-		"aquatics": "Club",
-		"university": "College",
-		"school": "High School",
-		"college": "High School",
-		"collegiate": "High School",
-		"colleg": "High School",
-		"chanel": "High School",
-		"intermediate": "High School",
-		"high": "High School",
-		"middle": "High School",
-		"junior": "High School",
-		"grammar": "High School",
-		"catholic": "High School",
-		"acg": "High School",
-		"default": "Other"
-	},
 	"team_info_extended": {
 		"row_identifier": "C2",
 		"address_1": { "start": 33, "length": 30 },

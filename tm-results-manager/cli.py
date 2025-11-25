@@ -291,8 +291,7 @@ def _read_regions_from_codes() -> list[str]:
             [
                 "Auckland",
                 "Bay of Plenty",
-                "Canterbury",
-                "West Coast",
+                "Canterbury West Coast",
                 "Hawkes Bay / Poverty Bay",
                 "Manawatu",
                 "National & International",
@@ -309,9 +308,21 @@ def _read_regions_from_codes() -> list[str]:
 
 def _prompt_region() -> str:
     regions = _read_regions_from_codes()
-    return click.prompt(
-        "Select region", type=click.Choice(regions, case_sensitive=True)
+    if not regions:
+        raise click.ClickException("No regions available to choose from.")
+
+    # Build a numeric menu
+    choices = {str(i + 1): name for i, name in enumerate(regions)}
+    click.echo("Select region:")
+    for num, name in choices.items():
+        click.echo(f"  {num}) {name}")
+
+    # Prompt for a number
+    choice = click.prompt(
+        "Choose a region number",
+        type=click.Choice(list(choices.keys()), case_sensitive=False),
     )
+    return choices[choice]
 
 
 def _ensure_dir(p: Path) -> None:
